@@ -607,7 +607,7 @@
         if (e.mimeType.startsWith('image/')) {
           const img = document.createElement('img');
           // 모달에서는 원본 화질 로드 (한 번에 하나만 열리므로 속도 문제 없음)
-          img.src = 'https://drive.google.com/uc?export=view&id=' + e.fileId;
+          img.src = 'https://drive.google.com/thumbnail?id=' + e.fileId + '&sz=w2000';
           mediaEl.appendChild(img);
         } else if (e.mimeType.startsWith('video/')) {
           const iframe = document.createElement('iframe');
