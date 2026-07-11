@@ -264,6 +264,7 @@
     <div class="tabs">
       <div class="tab active" id="tabWrite" onclick="showTab('write')">추억공유</div>
       <div class="tab" id="tabGallery" onclick="showTab('gallery')">함께 보기</div>
+      <div class="tab" id="tabCouple" onclick="showTab('couple')">우리 웨딩사진</div>
     </div>
 
     <!-- 작성 화면 -->
@@ -291,6 +292,12 @@
       <div id="galleryGrid"></div>
       <div id="galleryEmpty" style="display:none;">아직 등록된 메시지가 없어요. 첫 축하를 남겨보세요!</div>
       <button id="loadMoreBtn" style="display:none;" onclick="loadGallery(false)">더 보기</button>
+    </div>
+
+    <!-- 신랑신부 웨딩사진 화면 -->
+    <div id="coupleView" style="display:none;">
+      <div id="coupleGrid"></div>
+      <div id="coupleEmpty" style="display:none;">아직 올라온 사진이 없어요.</div>
     </div>
     </div>
   </div>
@@ -324,9 +331,12 @@
     function showTab(tab) {
       document.getElementById('tabWrite').classList.toggle('active', tab === 'write');
       document.getElementById('tabGallery').classList.toggle('active', tab === 'gallery');
+      document.getElementById('tabCouple').classList.toggle('active', tab === 'couple');
       document.getElementById('writeView').style.display = tab === 'write' ? 'block' : 'none';
       document.getElementById('galleryView').style.display = tab === 'gallery' ? 'block' : 'none';
+      document.getElementById('coupleView').style.display = tab === 'couple' ? 'block' : 'none';
       if (tab === 'gallery' && !galleryLoadedOnce) loadGallery(true);
+      if (tab === 'couple' && !coupleLoadedOnce) loadCouplePhotos();
     }
 
     fileInput.addEventListener('change', () => {
@@ -499,7 +509,6 @@
     let galleryOffset = 0;
     let galleryTotal = 0;
     let galleryLoadedOnce = false;
-    let allEntries = [];
 
     function loadGallery(reset) {
       const gridEl = document.getElementById('galleryGrid');
@@ -508,7 +517,6 @@
 
       if (reset) {
         galleryOffset = 0;
-        allEntries = [];
         gridEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#7c93ad;font-size:13px;padding:20px 0;">불러오는 중...</div>';
         emptyEl.style.display = 'none';
         moreBtn.style.display = 'none';
@@ -551,9 +559,7 @@
       emptyEl.style.display = 'none';
 
       entries.forEach(e => {
-        const idx = allEntries.length;
-        allEntries.push(e);
-        gridEl.appendChild(buildThumb(e, idx));
+        gridEl.appendChild(buildThumb(e));
       });
 
       galleryOffset += entries.length;
@@ -563,10 +569,45 @@
       moreBtn.style.display = (galleryOffset < galleryTotal) ? 'block' : 'none';
     }
 
-    function buildThumb(e, idx) {
+    // ---------- 우리 웨딩사진 (신랑신부가 드라이브에 직접 올린 사진) ----------
+    let coupleLoadedOnce = false;
+
+    function loadCouplePhotos() {
+      const gridEl = document.getElementById('coupleGrid');
+      const emptyEl = document.getElementById('coupleEmpty');
+
+      gridEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#7c93ad;font-size:13px;padding:20px 0;">불러오는 중...</div>';
+      emptyEl.style.display = 'none';
+
+      fetch(API_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'getCouplePhotos', data: {} })
+      })
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+          coupleLoadedOnce = true;
+          gridEl.innerHTML = '';
+          const entries = (res && res.entries) || [];
+          if (entries.length === 0) {
+            emptyEl.style.display = 'block';
+            return;
+          }
+          emptyEl.style.display = 'none';
+          entries.forEach(function(e) {
+            gridEl.appendChild(buildThumb(e));
+          });
+        })
+        .catch(function() {
+          gridEl.innerHTML = '';
+          emptyEl.style.display = 'block';
+          emptyEl.textContent = '불러오기에 실패했습니다.';
+        });
+    }
+
+    function buildThumb(e) {
       const div = document.createElement('div');
       div.className = 'thumb';
-      div.onclick = () => openModal(idx);
+      div.onclick = () => openModal(e);
 
       if (e.fileId && e.mimeType) {
         // 가벼운 썸네일만 로드 (원본 아님) -> 속도 개선
@@ -588,16 +629,18 @@
         div.appendChild(msg);
       }
 
-      const tag = document.createElement('div');
-      tag.className = 'name-tag';
-      tag.textContent = e.name || '익명';
-      div.appendChild(tag);
+      // 신랑신부 사진(name 속성 없음)에는 이름표를 안 붙임
+      if (typeof e.name !== 'undefined') {
+        const tag = document.createElement('div');
+        tag.className = 'name-tag';
+        tag.textContent = e.name || '익명';
+        div.appendChild(tag);
+      }
 
       return div;
     }
 
-    function openModal(idx) {
-      const e = allEntries[idx];
+    function openModal(e) {
       if (!e) return;
 
       const mediaEl = document.getElementById('modalMedia');
@@ -617,11 +660,19 @@
         }
       }
 
-      document.getElementById('modalName').textContent = e.name || '익명';
-      document.getElementById('modalMsg').textContent = e.message || '';
-      document.getElementById('modalTime').textContent = e.time
-        ? new Date(e.time).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-        : '';
+      const modalBody = document.getElementById('modalBody');
+      if (typeof e.name !== 'undefined') {
+        // 게스트가 올린 항목: 이름/메시지/시간 표시
+        modalBody.style.display = 'block';
+        document.getElementById('modalName').textContent = e.name || '익명';
+        document.getElementById('modalMsg').textContent = e.message || '';
+        document.getElementById('modalTime').textContent = e.time
+          ? new Date(e.time).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+          : '';
+      } else {
+        // 신랑신부 사진: 텍스트 정보 없이 사진만 표시
+        modalBody.style.display = 'none';
+      }
 
       document.getElementById('modalOverlay').classList.add('open');
     }
