@@ -555,7 +555,15 @@
       if (reset) {
         galleryOffset = 0;
         galleryList = [];
-        gridEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#7c93ad;font-size:13px;padding:20px 0;">불러오는 중...</div>';
+        // 전에 본 목록을 먼저 보여주고(즉시), 최신 목록으로 갱신
+        let cachedG = null;
+        try { cachedG = JSON.parse(localStorage.getItem('galleryCache') || 'null'); } catch (err) {}
+        if (cachedG && cachedG.length) {
+          gridEl.innerHTML = '';
+          cachedG.forEach(function(e) { gridEl.appendChild(buildThumb(e, cachedG)); });
+        } else {
+          gridEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#7c93ad;font-size:13px;padding:20px 0;">불러오는 중...</div>';
+        }
         emptyEl.style.display = 'none';
         moreBtn.style.display = 'none';
       } else {
@@ -588,6 +596,7 @@
 
       const entries = (res && res.entries) || [];
       galleryTotal = (res && res.total) || 0;
+      if (reset) { try { localStorage.setItem('galleryCache', JSON.stringify(entries)); } catch (err) {} }
 
       if (galleryOffset === 0 && entries.length === 0) {
         emptyEl.style.display = 'block';
