@@ -238,6 +238,33 @@
     #modalMedia img { width: 100%; display: block; }
     #modalMedia iframe { width: 100%; height: 280px; display: block; border: none; }
     #modalBody { padding: 16px 18px 20px; }
+    .navBtn {
+      position: fixed;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 44px; height: 44px;
+      border: none;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.88);
+      color: #2d4468;
+      font-size: 26px;
+      line-height: 1;
+      cursor: pointer;
+      z-index: 1001;
+      display: none;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    }
+    #modalPrev { left: 10px; }
+    #modalNext { right: 10px; }
+    #modalCount {
+      position: fixed;
+      bottom: 18px; left: 50%;
+      transform: translateX(-50%);
+      color: #fff;
+      font-size: 13px;
+      z-index: 1001;
+      display: none;
+    }
     #modalClose {
       position: absolute;
       top: 10px; right: 10px;
@@ -302,6 +329,9 @@
 
   <!-- 크게 보기 모달 -->
   <div id="modalOverlay" onclick="if(event.target===this) closeModal()">
+    <button class="navBtn" id="modalPrev" onclick="navModal(-1)">‹</button>
+    <button class="navBtn" id="modalNext" onclick="navModal(1)">›</button>
+    <div id="modalCount"></div>
     <div id="modalBox">
       <button id="modalClose" onclick="closeModal()">✕</button>
       <div id="modalMedia"></div>
@@ -505,6 +535,7 @@
     // ---------- 갤러리 (썸네일 그리드 + 페이지네이션) ----------
     const PAGE_SIZE = 24;
     let galleryOffset = 0;
+    let galleryList = [];
     let galleryTotal = 0;
     let galleryLoadedOnce = false;
 
@@ -515,6 +546,7 @@
 
       if (reset) {
         galleryOffset = 0;
+        galleryList = [];
         gridEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#7c93ad;font-size:13px;padding:20px 0;">불러오는 중...</div>';
         emptyEl.style.display = 'none';
         moreBtn.style.display = 'none';
@@ -557,7 +589,8 @@
       emptyEl.style.display = 'none';
 
       entries.forEach(e => {
-        gridEl.appendChild(buildThumb(e));
+        galleryList.push(e);
+        gridEl.appendChild(buildThumb(e, galleryList));
       });
 
       galleryOffset += entries.length;
@@ -592,7 +625,7 @@
           }
           emptyEl.style.display = 'none';
           entries.forEach(function(e) {
-            gridEl.appendChild(buildThumb(e));
+            gridEl.appendChild(buildThumb(e, entries));
           });
         })
         .catch(function() {
@@ -602,10 +635,10 @@
         });
     }
 
-    function buildThumb(e) {
+    function buildThumb(e, list) {
       const div = document.createElement('div');
       div.className = 'thumb';
-      div.onclick = () => openModal(e);
+      div.onclick = () => openModal(list, list.indexOf(e));
 
       if (e.fileId && e.mimeType) {
         // 가벼운 썸네일만 로드 (원본 아님) -> 속도 개선
@@ -638,7 +671,52 @@
       return div;
     }
 
-    function openModal(e) {
+    let modalList = [];
+    let modalIdx = 0;
+
+    function openModal(list, idx) {
+      modalList = list || [];
+      modalIdx = idx || 0;
+      showModalEntry(modalList[modalIdx]);
+      updateNav();
+    }
+
+    function navModal(d) {
+      if (modalList.length < 2) return;
+      modalIdx = (modalIdx + d + modalList.length) % modalList.length;
+      showModalEntry(modalList[modalIdx]);
+      updateNav();
+    }
+
+    function updateNav() {
+      const multi = modalList.length > 1;
+      document.getElementById('modalPrev').style.display = multi ? 'block' : 'none';
+      document.getElementById('modalNext').style.display = multi ? 'block' : 'none';
+      const cnt = document.getElementById('modalCount');
+      cnt.style.display = multi ? 'block' : 'none';
+      cnt.textContent = (modalIdx + 1) + ' / ' + modalList.length;
+    }
+
+    document.addEventListener('keydown', function(ev) {
+      if (!document.getElementById('modalOverlay').classList.contains('open')) return;
+      if (ev.key === 'ArrowLeft') navModal(-1);
+      else if (ev.key === 'ArrowRight') navModal(1);
+      else if (ev.key === 'Escape') closeModal();
+    });
+
+    // 모바일 스와이프로 넘기기
+    let touchX = null;
+    document.getElementById('modalOverlay').addEventListener('touchstart', function(ev) {
+      touchX = ev.changedTouches[0].clientX;
+    }, { passive: true });
+    document.getElementById('modalOverlay').addEventListener('touchend', function(ev) {
+      if (touchX === null) return;
+      const dx = ev.changedTouches[0].clientX - touchX;
+      touchX = null;
+      if (Math.abs(dx) > 50) navModal(dx < 0 ? 1 : -1);
+    }, { passive: true });
+
+    function showModalEntry(e) {
       if (!e) return;
 
       const mediaEl = document.getElementById('modalMedia');
