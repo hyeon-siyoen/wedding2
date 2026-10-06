@@ -2,7 +2,9 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="preconnect" href="https://drive.google.com">
+<link rel="preconnect" href="https://lh3.googleusercontent.com" crossorigin>
+<meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     * { box-sizing: border-box; }
     html, body {
@@ -356,6 +358,12 @@
     const MAX_SIZE_MB = 25;
     const MAX_FILES = 10;
 
+    // 페이지가 뜬 뒤 백그라운드에서 미리 불러와서, 탭을 눌렀을 때 바로 보이게
+    window.addEventListener('load', function() {
+      setTimeout(function() { if (!coupleLoadedOnce) loadCouplePhotos(); }, 600);
+      setTimeout(function() { if (!galleryLoadedOnce) loadGallery(true); }, 1200);
+    });
+
     function showTab(tab) {
       document.getElementById('tabWrite').classList.toggle('active', tab === 'write');
       document.getElementById('tabGallery').classList.toggle('active', tab === 'gallery');
@@ -607,7 +615,14 @@
       const gridEl = document.getElementById('coupleGrid');
       const emptyEl = document.getElementById('coupleEmpty');
 
-      gridEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#7c93ad;font-size:13px;padding:20px 0;">불러오는 중...</div>';
+      let cached = null;
+      try { cached = JSON.parse(localStorage.getItem('couplePhotosCache') || 'null'); } catch (err) {}
+      if (cached && cached.length) {
+        gridEl.innerHTML = '';
+        cached.forEach(function(e) { gridEl.appendChild(buildThumb(e, cached)); });
+      } else {
+        gridEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#7c93ad;font-size:13px;padding:20px 0;">불러오는 중...</div>';
+      }
       emptyEl.style.display = 'none';
 
       fetch(API_URL, {
@@ -619,6 +634,7 @@
           coupleLoadedOnce = true;
           gridEl.innerHTML = '';
           const entries = (res && res.entries) || [];
+          try { localStorage.setItem('couplePhotosCache', JSON.stringify(entries)); } catch (err) {}
           if (entries.length === 0) {
             emptyEl.style.display = 'block';
             return;
@@ -642,7 +658,7 @@
 
       if (e.fileId && e.mimeType) {
         // 가벼운 썸네일만 로드 (원본 아님) -> 속도 개선
-        const thumbUrl = 'https://drive.google.com/thumbnail?id=' + e.fileId + '&sz=w300';
+        const thumbUrl = 'https://drive.google.com/thumbnail?id=' + e.fileId + '&sz=w240';
         const img = document.createElement('img');
         img.src = thumbUrl;
         img.loading = 'lazy';
@@ -679,6 +695,7 @@
       modalIdx = idx || 0;
       showModalEntry(modalList[modalIdx]);
       updateNav();
+      preloadNeighbors();
     }
 
     function navModal(d) {
@@ -686,6 +703,7 @@
       modalIdx = (modalIdx + d + modalList.length) % modalList.length;
       showModalEntry(modalList[modalIdx]);
       updateNav();
+      preloadNeighbors();
     }
 
     function updateNav() {
@@ -716,6 +734,19 @@
       if (Math.abs(dx) > 50) navModal(dx < 0 ? 1 : -1);
     }, { passive: true });
 
+    function bigImgUrl(id) { return 'https://drive.google.com/thumbnail?id=' + id + '&sz=w1200'; }
+
+    // 앞뒤 사진을 미리 받아두기 → 넘길 때 바로 뜸
+    function preloadNeighbors() {
+      if (modalList.length < 2) return;
+      [1, -1, 2].forEach(function(d) {
+        const n = modalList[(modalIdx + d + modalList.length) % modalList.length];
+        if (n && n.fileId && n.mimeType && n.mimeType.startsWith('image/')) {
+          new Image().src = bigImgUrl(n.fileId);
+        }
+      });
+    }
+
     function showModalEntry(e) {
       if (!e) return;
 
@@ -725,9 +756,14 @@
       if (e.fileId && e.mimeType) {
         if (e.mimeType.startsWith('image/')) {
           const img = document.createElement('img');
-          // 모달에서는 원본 화질 로드 (한 번에 하나만 열리므로 속도 문제 없음)
-          img.src = 'https://drive.google.com/thumbnail?id=' + e.fileId + '&sz=w2000';
+          // 이미 불러온 썸네일을 먼저 보여주고(빈 화면/파일명 깜빡임 방지), 큰 사진이 준비되면 교체
+          img.src = 'https://drive.google.com/thumbnail?id=' + e.fileId + '&sz=w240';
+          img.style.minHeight = '240px';
           mediaEl.appendChild(img);
+          const bigUrl = bigImgUrl(e.fileId);
+          const big = new Image();
+          big.onload = function() { if (mediaEl.contains(img)) img.src = bigUrl; };
+          big.src = bigUrl;
         } else if (e.mimeType.startsWith('video/')) {
           const iframe = document.createElement('iframe');
           iframe.src = 'https://drive.google.com/file/d/' + e.fileId + '/preview';
